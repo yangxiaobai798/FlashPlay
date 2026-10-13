@@ -27,10 +27,15 @@
 
 ## 用法
 
+**快速开始（推荐）**：下载 Release 里的 zip → 解压 → 双击 **速映.exe**（无需安装）。
+首次下载时程序会自动准备所需内核（yt-dlp / ffmpeg / mpv / aria2c，走国内镜像加速）。
+
+从源码运行（需要 Python 3.8+）：
+
 ```bash
-python yt_dlp_gui.py                 # 启动图形界面
-python yt_dlp_gui.py "视频链接"       # 启动并自动加入任务
-python yt_dlp_gui.py --selftest      # 无界面自检：真实下载一个小视频，验证链路
+python sy.py                 # 启动图形界面
+python sy.py "视频链接"       # 启动并自动加入任务
+python sy.py --selftest      # 无界面自检：真实下载一个小视频，验证链路
 ```
 
 界面操作：
@@ -64,7 +69,7 @@ python yt_dlp_gui.py --selftest      # 无界面自检：真实下载一个小�
 
 ```bash
 pip install pyinstaller
-pyinstaller -F -w -n "FlashPlay" --icon assets/app.ico yt_dlp_gui.py
+pyinstaller -F -w -n "速映" --icon assets/app.ico sy.py
 ```
 
 ## License

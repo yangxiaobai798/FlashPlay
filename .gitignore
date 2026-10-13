@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 yt_dlp_gui_config.json
+sy_config.json
 downloads/
 selftest_output/
 gui_run.log
@@ -11,11 +12,10 @@ thumb_cache/
 # （由程序首次使用时自动获取；对外发布走 GitHub Releases 附件）
 tools/
 player/
-yt-dlp.exe
-yt-dlp.exe.bak
-yt-dlp.exe.new
+*.exe
+*.exe.bak
+*.exe.new
 yt-dlp.sha256
-FlashPlay.exe
 *.part
 
 # 编辑器 / 系统文件

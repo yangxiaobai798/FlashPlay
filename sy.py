@@ -24,9 +24,12 @@
 
 用法
 ----
-    python yt_dlp_gui.py                # 启动图形界面
-    python yt_dlp_gui.py --selftest     # 无界面自检（真实下载一个短视频验证）
-    python yt_dlp_gui.py "链接"         # 启动并把链接加入队列
+普通用户：双击 速映.exe 即可（无需安装；首次下载时自动准备所需内核）
+
+开发者（需要 Python 3.8+）：
+    python sy.py                # 启动图形界面
+    python sy.py --selftest     # 无界面自检（真实下载一个短视频验证）
+    python sy.py "链接"         # 启动并把链接加入队列
 
 作者：可自由修改与再发布（MIT License 建议）
 """
@@ -62,7 +65,7 @@ except Exception:            # 非 Windows 平台：退化为直接阻塞读
 
 APP_NAME = "速映 FlashPlay"        # 换图标的同时改名字（图标方案 03_速映）
 VERSION = "1.0.0"
-CONFIG_NAME = "yt_dlp_gui_config.json"
+CONFIG_NAME = "sy_config.json"
 
 IS_WINDOWS = os.name == "nt"
 CREATE_NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
@@ -1399,7 +1402,7 @@ class MpvPlayer:
     通过 `--input-ipc-server` 还能让 GUI 完全接管控制。
     """
 
-    PIPE_NAME = rf"\\.\pipe\yt_dlp_gui_mpv_{os.getpid()}"   # 每个进程独立，避免多开冲突
+    PIPE_NAME = rf"\\.\pipe\sy_mpv_{os.getpid()}"   # 每个进程独立，避免多开冲突
 
     def __init__(self, cfg, emit=None):
         self.cfg = cfg
@@ -1478,7 +1481,7 @@ class MpvPlayer:
 
     def _download(self, url, dest):
         import urllib.request
-        req = urllib.request.Request(url, headers={"User-Agent": "yt-dlp-gui"})
+        req = urllib.request.Request(url, headers={"User-Agent": "FlashPlay"})
         with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as fh:
             total = int(resp.headers.get("Content-Length") or 0)
             got = 0

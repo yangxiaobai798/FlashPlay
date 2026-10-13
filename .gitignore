@@ -1,0 +1,25 @@
+# 运行期产物（个人数据，不要提交）
+__pycache__/
+*.pyc
+yt_dlp_gui_config.json
+downloads/
+selftest_output/
+gui_run.log
+thumb_cache/
+
+# 外置内核 / 打包产物：大文件，不进仓库
+# （由程序首次使用时自动获取；对外发布走 GitHub Releases 附件）
+tools/
+player/
+yt-dlp.exe
+yt-dlp.exe.bak
+yt-dlp.exe.new
+yt-dlp.sha256
+FlashPlay.exe
+*.part
+
+# 编辑器 / 系统文件
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

@@ -1183,6 +1183,8 @@ class Engine:
         """阻塞式下载。返回 (success, message)。"""
         exe = self.find_ytdlp()
         if not exe:                     # 首次使用：自动获取下载内核（静默，失败才报错）
+            task.status = "准备内核"
+            self.emit("task", task)
             exe = self.ensure_ytdlp_quiet()
         if not exe:
             return False, ("无法获取下载内核 yt-dlp（网络不通？）——请稍后重试，"
@@ -3022,6 +3024,25 @@ class App(tk.Tk):
         threading.Thread(target=work, daemon=True).start()
         return False
 
+    def _ensure_ytdlp(self):
+        """确保下载内核可用；没有就问用户是否自动下载。"""
+        if self.engine.find_ytdlp():
+            return True
+        if not messagebox.askyesno(
+                APP_NAME,
+                "还没有下载内核 yt-dlp（约 18MB，下载后一直可用）。\n\n"
+                "现在自动下载吗？（走国内镜像加速，稍等片刻）", parent=self):
+            return False
+
+        def work():
+            try:
+                self.engine.download_ytdlp()
+                self.events.put(("log", "下载内核已就绪，请再点一次「试看」", "ok"))
+            except Exception as exc:
+                self.events.put(("log", f"yt-dlp 获取失败：{exc}", "err"))
+        threading.Thread(target=work, daemon=True).start()
+        return False
+
     # ---- 内核维护（yt-dlp 更新 / ffmpeg 获取）------------------------------
     def _check_ytdlp_update(self):
         """先查最新版本，再问用户是否更新。"""
@@ -3237,10 +3258,10 @@ class App(tk.Tk):
         """在线播放：yt-dlp 把码流直接管道给内置播放器，不落盘、下多少看多少。"""
         if not self._ensure_player():
             return
-        exe = self.engine.find_ytdlp()
-        if not exe:
-            messagebox.showwarning(APP_NAME, "没找到 yt-dlp，请先在“设置”里指定路径。", parent=self)
+        if not self.engine.find_ytdlp():
+            self._ensure_ytdlp()
             return
+        exe = self.engine.find_ytdlp()
         self.show_player()
         try:
             self.player.play_stream(url, self.video_frame.winfo_id(), exe, quality,
@@ -3316,7 +3337,8 @@ class App(tk.Tk):
         eta = human_eta(task.eta)
         tag = ("done" if task.status in ("已完成", "已存在") else
                "error" if task.status == "失败" else
-               "active" if task.status in ("下载中", "合并中", "转换音频", "获取信息") else "idle")
+               "active" if task.status in ("下载中", "合并中", "转换音频", "获取信息",
+                                           "准备内核") else "idle")
         self.tree.item(iid, values=(task.status, task.display_title, percent, speed, eta),
                        tags=(tag,))
         if self._selected_task() is task:

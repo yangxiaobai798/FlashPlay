@@ -16,7 +16,7 @@
 * 画质选择：最佳 / 1080P / 720P / 480P / 仅音频(mp3)
 * 实时进度：百分比、速度、剩余时间、合并/转码状态
 * 队列串行下载、暂停/继续、取消、失败自动重试
-* 智能定位 yt-dlp.exe（同目录优先，其次 PATH），首次下载时自动获取 ffmpeg
+* 内核全自动：yt-dlp / ffmpeg / mpv / aria2c 首次使用时自动获取（国内镜像加速）
 * 内核自维护：设置里一键检查更新 yt-dlp；ffmpeg / mpv / aria2c 首次使用时自动获取
 * B 站等站点遇到不可达 CDN 节点时自动重试（换节点）
 * 完成后双击任务即可打开文件 / 右键菜单打开所在文件夹
@@ -458,6 +458,7 @@ class Engine:
         self.cfg = cfg
         self.emit = emit or (lambda *a, **k: None)
         self._ffmpeg_lock = threading.Lock()
+        self._ytdlp_lock = threading.Lock()
 
     # ---- 定位 yt-dlp --------------------------------------------------------
     def find_ytdlp(self):
@@ -468,9 +469,6 @@ class Engine:
             cand = os.path.join(SCRIPT_DIR, name)
             if os.path.isfile(cand):
                 return cand
-            cand2 = os.path.join(os.path.dirname(SCRIPT_DIR), "yt-dlp", name)
-            if os.path.isfile(cand2):
-                return cand2
         found = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe")
         return found or ""
 
@@ -904,34 +902,17 @@ class Engine:
     YTDLP_EXE_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
     YTDLP_SUMS_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS"
 
-    def latest_ytdlp(self):
-        """查询 yt-dlp 最新版本号（网络不通时抛异常）。"""
-        import urllib.request
-        req = urllib.request.Request(self.YTDLP_API, headers={"User-Agent": "FlashPlay"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return (data.get("tag_name") or "").strip()
-
-    def update_ytdlp(self, force=False):
-        """下载最新 yt-dlp.exe → 官方哈希校验 → 验证可运行 → 替换（旧版备份 .bak）。"""
-        exe = self.find_ytdlp()
-        if not exe:
-            raise RuntimeError("找不到 yt-dlp.exe（请把 yt-dlp.exe 放在程序同目录）")
-        cur = self.ytdlp_version()
-        tag = self.latest_ytdlp()
-        if not force and tag and cur and tag == cur:
-            return cur
-        dest_dir = os.path.dirname(exe) or SCRIPT_DIR
-        new_exe = os.path.join(dest_dir, "yt-dlp.exe.new")
-        sums = os.path.join(dest_dir, "yt-dlp.sha256")
+    def _fetch_ytdlp(self, dest):
+        """镜像循环下载 yt-dlp.exe 到 dest，做官方哈希校验 + 运行验证。返回版本号。"""
+        sums = dest + ".sha256"
         last_err = ""
-        ok_dl = False
+        ok = False
         for prefix in MIRROR_PREFIXES:
             label = prefix or "直连 GitHub"
             try:
-                self.emit("log", f"下载 yt-dlp {tag or '最新版'}（约 18MB，来源：{label}）…")
-                self._download(prefix + self.YTDLP_EXE_URL, new_exe, label="yt-dlp")
-                ok_dl = True
+                self.emit("log", f"下载 yt-dlp 内核（约 18MB，来源：{label}）…")
+                self._download(prefix + self.YTDLP_EXE_URL, dest, label="yt-dlp")
+                ok = True
                 try:
                     self._download(prefix + self.YTDLP_SUMS_URL, sums, label="校验和")
                 except Exception:
@@ -940,10 +921,8 @@ class Engine:
             except Exception as exc:
                 last_err = f"{label}: {exc}"
                 self.emit("log", f"下载失败（{label}）：{exc}", "warn")
-        if not ok_dl:
-            raise RuntimeError(f"新版本下载失败：{last_err}")
-
-        # 官方哈希校验（有 SHA2-256SUMS 才校验）
+        if not ok:
+            raise RuntimeError(f"下载失败：{last_err}")
         if sums and os.path.isfile(sums):
             want = ""
             try:
@@ -961,31 +940,75 @@ class Engine:
                 pass
             if want:
                 h = hashlib.sha256()
-                with open(new_exe, "rb") as fh:
+                with open(dest, "rb") as fh:
                     for chunk in iter(lambda: fh.read(1024 * 1024), b""):
                         h.update(chunk)
                 if h.hexdigest().lower() != want.lower():
                     try:
-                        os.remove(new_exe)
+                        os.remove(dest)
                     except OSError:
                         pass
-                    raise RuntimeError("官方哈希校验不通过，已放弃更新（镜像可能不稳定，稍后再试）")
+                    raise RuntimeError("官方哈希校验不通过，已放弃（镜像可能不稳定，稍后再试）")
                 self.emit("log", "官方 SHA256 校验通过")
-
-        # 验证新文件真的能跑
         ver = ""
         try:
-            res = subprocess.run([new_exe, "--version"], capture_output=True, text=True,
+            res = subprocess.run([dest, "--version"], capture_output=True, text=True,
                                  timeout=60, creationflags=CREATE_NO_WINDOW)
             ver = (res.stdout or "").strip()
         except Exception:
             ver = ""
         if not ver:
             try:
-                os.remove(new_exe)
+                os.remove(dest)
             except OSError:
                 pass
-            raise RuntimeError("新版本无法运行，已放弃更新")
+            raise RuntimeError("下载的文件无法运行，已放弃")
+        return ver
+
+    def download_ytdlp(self):
+        """首次使用时自动获取 yt-dlp.exe（放到程序目录）。返回路径。"""
+        dst = os.path.join(SCRIPT_DIR, "yt-dlp.exe")
+        ver = self._fetch_ytdlp(dst)
+        self.emit("log", f"下载内核就绪：{dst}（{ver}）", "ok")
+        return dst
+
+    def ensure_ytdlp_quiet(self):
+        """工作线程里静默确保 yt-dlp 可用（首次使用时自动获取）。返回路径或空串。"""
+        found = self.find_ytdlp()
+        if found:
+            return found
+        with self._ytdlp_lock:
+            found = self.find_ytdlp()
+            if found:
+                return found
+            try:
+                return self.download_ytdlp()
+            except Exception as exc:
+                self.emit("log", f"yt-dlp 自动获取失败：{exc}", "warn")
+                return ""
+
+    def latest_ytdlp(self):
+        """查询 yt-dlp 最新版本号（网络不通时抛异常）。"""
+        import urllib.request
+        req = urllib.request.Request(self.YTDLP_API, headers={"User-Agent": "FlashPlay"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return (data.get("tag_name") or "").strip()
+
+    def update_ytdlp(self, force=False):
+        """下载最新 yt-dlp.exe → 官方哈希校验 → 验证可运行 → 替换（旧版备份 .bak）。"""
+        exe = self.find_ytdlp()
+        cur = self.ytdlp_version() if exe else ""
+        tag = self.latest_ytdlp()
+        if not force and tag and cur and tag == cur:
+            return cur
+        if not exe:                     # 本机还没有 → 直接获取安装
+            self.download_ytdlp()
+            return self.ytdlp_version()
+        dest_dir = os.path.dirname(exe) or SCRIPT_DIR
+        new_exe = os.path.join(dest_dir, "yt-dlp.exe.new")
+        ver = self._fetch_ytdlp(new_exe)
+        self.emit("log", f"下载完成（{ver}），正在替换…")
 
         # 替换（旧版先备份，失败自动回滚）
         bak = exe + ".bak"
@@ -1159,8 +1182,11 @@ class Engine:
     def download(self, task, on_progress=None):
         """阻塞式下载。返回 (success, message)。"""
         exe = self.find_ytdlp()
+        if not exe:                     # 首次使用：自动获取下载内核（静默，失败才报错）
+            exe = self.ensure_ytdlp_quiet()
         if not exe:
-            return False, "找不到 yt-dlp，请在“设置”中指定 yt-dlp 可执行文件路径"
+            return False, ("无法获取下载内核 yt-dlp（网络不通？）——请稍后重试，"
+                           "或手动把 yt-dlp.exe 放到本程序同目录")
 
         if not self.find_ffmpeg():      # 首次下载时自动获取合并内核（静默，失败不阻塞）
             self.ensure_ffmpeg_quiet()
@@ -2866,8 +2892,8 @@ class App(tk.Tk):
                         self._log("未检测到 ffmpeg（合并高清音视频用）——首次下载时会自动获取，"
                                   "也可在「设置 → 获取 ffmpeg」里手动下载。", "warn")
                     if not info["ytdlp"]:
-                        self._log("未找到 yt-dlp：请把 yt-dlp.exe 放在本程序同目录，"
-                                  "或在“设置”里指定路径。", "err")
+                        self._log("还没有下载内核 yt-dlp——首次下载时会自动获取（约 18MB，走国内镜像），"
+                                  "也可以自行放置 yt-dlp.exe。", "warn")
                 elif kind == "player":
                     self._refresh_player_ui(rest[0])
                 elif kind == "thumb":
@@ -2885,9 +2911,12 @@ class App(tk.Tk):
                             messagebox.showinfo(APP_NAME, f"yt-dlp 已是最新版本（{cur}）。", parent=self)
                         elif messagebox.askyesno(
                                 APP_NAME,
-                                f"发现 yt-dlp 新版本：{latest}\n当前版本：{cur or '未知'}\n\n"
-                                "现在下载并更新吗？（约 18MB；更新完成后\n"
-                                "旧版会备份为 yt-dlp.exe.bak，可随时还原）", parent=self):
+                                (f"本机还没有 yt-dlp 内核，现在自动获取吗？（约 18MB，走国内镜像）\n\n"
+                                 f"将下载最新版：{latest}"
+                                 if not cur else
+                                 f"发现 yt-dlp 新版本：{latest}\n当前版本：{cur}\n\n"
+                                 "现在下载并更新吗？（约 18MB；更新完成后\n"
+                                 "旧版会备份为 yt-dlp.exe.bak，可随时还原）"), parent=self):
                             self._do_ytdlp_update()
                 elif kind == "update_done":
                     payload = rest[0] if rest else {}

@@ -14,7 +14,7 @@
 - 画质选择：最佳 / 1080P / 720P / 480P / 仅音频 MP3
 - 实时进度：百分比、速度、剩余时间；合并、转码阶段有状态提示
 - 任务队列串行下载，失败自动重试（网络类错误），地址类的致命错误不浪费重试
-- 自动定位 yt-dlp.exe（同目录优先，其次 PATH）；ffmpeg / mpv / aria2c 首次使用时自动获取（国内镜像加速）
+- 内核全自动获取：yt-dlp / ffmpeg / mpv / aria2c 首次使用时自动下载（国内镜像加速），本机已有的自动检测复用
 - 内核自维护：「设置 → 内核维护」一键检查更新 yt-dlp（旧版自动备份）
 - 完成后双击任务打开文件，右键菜单可打开文件夹 / 复制链接 / 重新下载
 - 配置持久化（画质、下载目录、cookies 浏览器、代理、重试次数）
@@ -22,8 +22,8 @@
 ## 环境要求
 
 - Python 3.8+（Windows 上自带 tkinter 的官方安装包即可）
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases) 可执行文件（放在本程序同目录，或加入 PATH）
-- 下载高清视频需要 [ffmpeg](https://www.gyan.dev/ffmpeg/builds/)（用于音视频合并）—— **首次下载时会自动获取**（约 30MB，国内镜像加速）；本机已装 ffmpeg 的会自动检测复用
+- **无需手动准备任何内核**：[yt-dlp](https://github.com/yt-dlp/yt-dlp/releases)（下载内核，约 18MB）、[ffmpeg](https://www.gyan.dev/ffmpeg/builds/)（合并内核，约 30MB）、[mpv](https://github.com/zhongfly/mpv-winbuild)（播放内核，约 32MB）、[aria2c](https://github.com/aria2/aria2)（磁力内核，约 2.4MB）都在**首次使用时自动获取**（国内镜像加速）
+- 本机已有 ffmpeg / yt-dlp 的会自动检测复用；也可以手动放到程序同目录跳过下载
 
 ## 用法
 
@@ -53,7 +53,7 @@ python yt_dlp_gui.py --selftest      # 无界面自检：真实下载一个小�
 
 | 内核 | 用途 | 获取方式 |
 | --- | --- | --- |
-| yt-dlp.exe | 网站视频下载 | 随包提供；「设置 → 内核维护」可一键检查更新（yt-dlp 每周更新多次，建议定期更新） |
+| yt-dlp.exe | 网站视频下载 | 首次使用时自动获取（约 18MB）；「设置 → 内核维护」可一键检查更新（yt-dlp 每周更新多次，建议定期更新） |
 | ffmpeg | 音视频合并 / 转码 | 首次下载时自动获取（约 30MB）；也可在设置里手动获取 |
 | mpv | 内置播放器 | 首次播放时自动获取（约 32MB） |
 | aria2c | 磁力下载 | 首次磁力下载时自动获取（约 2.4MB） |
